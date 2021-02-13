@@ -1,0 +1,17 @@
+model{
+	## Likelihood
+	for(i in 1:N){
+		sales[i] ~ dpois(lambda[i])
+		lambda[i] <- exp(mu[i])
+		mu[i] <- beta[1] + beta[2] * own_price + beta[3] * comp_price + 
+		beta[4] * comp_flag + beta[5] * promo + beta[6] * pg_price + beta[7] * diff_outlet + 
+		beta[8] * diff_365
+	}
+	## Prior for coefficients parameters
+	beta[2] ~ dnorm(-1.0, 0.5)
+	beta[3] ~ dnorm(1.0, 0.5)
+	beta[1] ~ dnorm(0, 1.0E-04)
+	for(j in 4:8){
+		beta[j] ~ dnorm(0, 1.0E-04)
+	}
+}
