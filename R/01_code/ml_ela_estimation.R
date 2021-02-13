@@ -8,6 +8,9 @@ library(plotly)
 library(parsnip)
 library(rsample)
 library(lubridate)
+library(forecast)
+library(timetk)
+library(modeltime)
 
 clean_names <- function(df){
   names(df) <- tolower(names(df))
@@ -15,6 +18,8 @@ clean_names <- function(df){
 }
 
 zscore <- function(x) (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE)
+
+set.seed(1)
 
 # Read and prep data ------------------------------------------------------
 
@@ -203,14 +208,63 @@ demand_curve <- function(pars, data){
   sum((data$avg_pred - yhat)^2)
 }
 
-optim(
-  par = c(0, 0, 0),
-  fn = demand_curve,
-  data = avg_preds,
-  method = "L-BFGS-B"
+# fit log-log to avg ice curve
+ela_resuts <- tidyr::tidy(lm(log(avg_pred) ~ log(price), data = avg_preds))
+
+# Forecasting Approach ----------------------------------------------------
+
+# single time series
+agg_ts <- df %>% 
+  dplyr::mutate(week_id = lubridate::week(orderdate)) %>% 
+  dplyr::select(week_id, year_id, quantity, productcode) %>% 
+  dplyr::group_by(week_id, year_id, productcode) %>% 
+  dplyr::summarise(quantity = sum(quantity), .groups = "drop") %>% 
+  dplyr::mutate(
+    date = as.Date(
+      paste(1,week_id,year_id, sep = "-"), 
+      format = "%u-%U-%Y"
+    )
+  ) %>% 
+  dplyr::select(-week_id, -year_id)
+
+agg_ts <- agg_ts %>% 
+  filter(productcode == unique(productcode)[1])
+
+timetk::plot_time_series(
+  .data = agg_ts,
+  .date_var = date,
+  .value = quantity,
+  .color_var = productcode,
+  .interactive = TRUE,
+  .smooth = FALSE
+)
+
+# rolling samples
+tt_split <- rsample::rolling_origin(
+  data = agg_ts,
+  
 )
 
 
-# Forecasting Approach ----------------------------------------------------
+tt_split$splits[[1]]
+
+# Multiple Time Series ----------------------------------------------------
+
+time_df <- purrr::map_dfr(
+  .x = unique(df$productcode),
+  .f = function(code){
+    tmp <- df %>% 
+      dplyr::filter(productcode == code) %>% 
+      dplyr::arrange(orderdate) %>% 
+      dplyr::select(
+        orderdate, productcode, quantity,
+        price, discount, markup
+      )
+  }
+)
+
+time_df %>% 
+  group_by(productcode) %>% 
+  nest()
 
 
